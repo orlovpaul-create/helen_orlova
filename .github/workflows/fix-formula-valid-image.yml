@@ -1,0 +1,41 @@
+name: Fix Formula Valid Image
+
+on:
+  push:
+    paths:
+      - "_fix_formula_valid_image.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replace broken Formula image references
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          s = re.sub(
+              r'src="assets/hq/formula-mutual-support-v2\.webp(?:\?v=[^"]*)?"',
+              'src="assets/hq/formula-mutual-support.webp?v=20260909-7"',
+              s
+          )
+          # Make Formula images render fully in the featured and project-card placements.
+          if '.formula-full{width:100%;height:auto!important;aspect-ratio:auto!important;object-fit:contain!important;background:transparent!important}' not in s:
+              s = s.replace('img.contain{object-fit:contain!important;background:#e9e5df}', 'img.contain{object-fit:contain!important;background:#e9e5df}.formula-full{width:100%;height:auto!important;aspect-ratio:auto!important;object-fit:contain!important;background:transparent!important}')
+          s = s.replace('class="contain" loading="lazy" decoding="async" src="assets/hq/formula-mutual-support.webp?v=20260909-7"', 'class="contain formula-full" loading="lazy" decoding="async" src="assets/hq/formula-mutual-support.webp?v=20260909-7"')
+          s = s.replace('loading="lazy" decoding="async" src="assets/hq/formula-mutual-support.webp?v=20260909-7" alt="Formula of Mutual Support"', 'class="formula-full" loading="lazy" decoding="async" src="assets/hq/formula-mutual-support.webp?v=20260909-7" alt="Formula of Mutual Support"')
+          p.write_text(s, encoding='utf-8')
+          PY
+          git config user.name "orlovpaul-create"
+          git config user.email "orlovpaul@gmail.com"
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix Formula image rendering"
+          git push
