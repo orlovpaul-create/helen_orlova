@@ -19,6 +19,7 @@ jobs:
         run: |
           cat tmp_after/part1.txt tmp_after/part2.txt tmp_after/part3.txt tmp_after/part4.txt tmp_after/part5.txt tmp_after/part6.txt > /tmp/after.b64
           base64 -d /tmp/after.b64 > assets/hq/after-movement-v3.webp
+          python -m pip install --quiet pillow
           python - <<'PY'
           from PIL import Image
           from pathlib import Path
