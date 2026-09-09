@@ -1,0 +1,94 @@
+name: Replace Formula image from Yandex
+
+on:
+  push:
+    paths:
+      - "_replace_formula_yandex.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  replace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Светлый фон.jpg and update site
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, urllib.parse, urllib.request, os, re
+          from pathlib import Path
+
+          public_key = 'https://disk.yandex.ru/d/lNWwPf5elm9axg/%D0%9E%D0%B1%D1%8A%D0%B5%D0%BA%D1%82%D1%8B%20%D1%84%D0%BE%D1%82%D0%BE'
+          target_name = 'Светлый фон.jpg'
+
+          def get_json(url):
+              with urllib.request.urlopen(url) as r:
+                  return json.load(r)
+
+          # First inspect the shared folder itself.
+          base = 'https://cloud-api.yandex.net/v1/disk/public/resources'
+          q = urllib.parse.urlencode({'public_key': public_key, 'limit': 200})
+          root = get_json(base + '?' + q)
+
+          found = None
+          def scan(obj):
+              global found
+              items = obj.get('_embedded', {}).get('items', [])
+              for it in items:
+                  if it.get('name','').casefold() == target_name.casefold():
+                      return it
+              return None
+
+          found = scan(root)
+          if not found:
+              # Try one level of nested folders if needed.
+              for it in root.get('_embedded', {}).get('items', []):
+                  if it.get('type') == 'dir':
+                      path = it.get('path')
+                      q = urllib.parse.urlencode({'public_key': public_key, 'path': path, 'limit': 200})
+                      sub = get_json(base + '?' + q)
+                      found = scan(sub)
+                      if found:
+                          break
+
+          if not found:
+              raise SystemExit('Светлый фон.jpg not found in shared Yandex folder')
+
+          path = found.get('path')
+          dl_api = 'https://cloud-api.yandex.net/v1/disk/public/resources/download?' + urllib.parse.urlencode({'public_key': public_key, 'path': path})
+          href = get_json(dl_api)['href']
+
+          out_dir = Path('assets/hq')
+          out_dir.mkdir(parents=True, exist_ok=True)
+          jpg_path = out_dir / 'formula-mutual-support-light.jpg'
+          urllib.request.urlretrieve(href, jpg_path)
+
+          # Convert to high-quality WebP for the website while preserving dimensions.
+          from PIL import Image
+          im = Image.open(jpg_path).convert('RGB')
+          webp_path = out_dir / 'formula-mutual-support-light.webp'
+          im.save(webp_path, 'WEBP', quality=95, method=6)
+          jpg_path.unlink(missing_ok=True)
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          # Replace only Formula of Mutual Support image references; hero stays untouched.
+          s = re.sub(
+              r'src="assets/hq/formula-mutual-support(?:-v2|-light)?\.webp(?:\?v=[^"]*)?"',
+              'src="assets/hq/formula-mutual-support-light.webp?v=20260909-8"',
+              s
+          )
+          # Make sure the Formula images display fully and clean duplicate class attributes if present.
+          s = s.replace('class="contain formula-full" class="formula-full"', 'class="formula-full"')
+          s = s.replace('class="contain formula-full"', 'class="formula-full"')
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          git config user.name "orlovpaul-create"
+          git config user.email "orlovpaul@gmail.com"
+          git add index.html assets/hq/formula-mutual-support-light.webp
+          git diff --cached --quiet && exit 0
+          git commit -m "Replace Formula of Mutual Support images with Светлый фон"
+          git push
