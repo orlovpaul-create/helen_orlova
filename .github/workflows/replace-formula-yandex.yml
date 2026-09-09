@@ -38,17 +38,11 @@ jobs:
           jpg_path = out_dir / 'formula-mutual-support-light.jpg'
           urllib.request.urlretrieve(href, jpg_path)
 
-          from PIL import Image
-          im = Image.open(jpg_path).convert('RGB')
-          webp_path = out_dir / 'formula-mutual-support-light.webp'
-          im.save(webp_path, 'WEBP', quality=95, method=6)
-          jpg_path.unlink(missing_ok=True)
-
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
           s = re.sub(
-              r'src="assets/hq/formula-mutual-support(?:-v2|-light)?\.webp(?:\?v=[^"]*)?"',
-              'src="assets/hq/formula-mutual-support-light.webp?v=20260909-9"',
+              r'src="assets/hq/formula-mutual-support(?:-v2|-light)?\.(?:webp|jpg)(?:\?v=[^"]*)?"',
+              'src="assets/hq/formula-mutual-support-light.jpg?v=20260909-10"',
               s
           )
           s = s.replace('class="contain formula-full" class="formula-full"', 'class="formula-full"')
@@ -58,7 +52,7 @@ jobs:
 
           git config user.name "orlovpaul-create"
           git config user.email "orlovpaul@gmail.com"
-          git add index.html assets/hq/formula-mutual-support-light.webp
+          git add index.html assets/hq/formula-mutual-support-light.jpg
           git diff --cached --quiet && exit 0
-          git commit -m "Replace Formula images with Светлый фон"
+          git commit -m "Replace Formula images with Светлый фон JPG"
           git push
