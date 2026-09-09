@@ -1,0 +1,75 @@
+name: Replace After Movement image
+
+on:
+  push:
+    paths:
+      - "_trigger_after_movement.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  replace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download attached artwork original from Yandex and update site
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request, re
+          from pathlib import Path
+
+          public_key = 'https://disk.yandex.ru/d/cf4MfR5EzLAB1g'
+          api = 'https://cloud-api.yandex.net/v1/disk/public/resources'
+          q = urllib.parse.urlencode({'public_key': public_key, 'limit': 200})
+          with urllib.request.urlopen(api + '?' + q) as r:
+              root = json.load(r)
+
+          items = root.get('_embedded', {}).get('items', [])
+          found = None
+          for it in items:
+              name = it.get('name','')
+              if name.startswith('14_') and 'Это мое тело' in name:
+                  found = it
+                  break
+          if not found:
+              # fallback: select item 14 if spelling/spacing differs
+              for it in items:
+                  if it.get('name','').startswith('14_'):
+                      found = it
+                      break
+          if not found:
+              raise SystemExit('Artwork file starting with 14_ not found')
+
+          path = found.get('path')
+          dl_api = 'https://cloud-api.yandex.net/v1/disk/public/resources/download?' + urllib.parse.urlencode({
+              'public_key': public_key,
+              'path': path
+          })
+          with urllib.request.urlopen(dl_api) as r:
+              href = json.load(r)['href']
+
+          out = Path('assets/hq/after-movement-2026.png')
+          urllib.request.urlretrieve(href, out)
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          s, n = re.subn(
+              r'src="assets/hq/after-movement[^"]*"(?= alt="After Movement")',
+              'src="assets/hq/after-movement-2026.png?v=20260909-11"',
+              s
+          )
+          if n != 1:
+              raise SystemExit(f'Expected 1 After Movement image replacement, got {n}')
+          p.write_text(s, encoding='utf-8')
+          print('Using:', found.get('name'))
+          print('Saved bytes:', out.stat().st_size)
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html assets/hq/after-movement-2026.png
+          git diff --cached --quiet && exit 0
+          git commit -m "Replace After Movement with new high-quality photo"
+          git push
