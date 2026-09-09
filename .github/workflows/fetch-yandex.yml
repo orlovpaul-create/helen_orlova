@@ -6,7 +6,7 @@ on:
       - "_trigger_yandex.txt"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   fetch:
@@ -23,15 +23,112 @@ jobs:
           api = "https://cloud-api.yandex.net/v1/disk/public/resources/download?" + urllib.parse.urlencode({"public_key": public_key})
           with urllib.request.urlopen(api, timeout=60) as r:
               info = json.load(r)
-          href = info["href"]
-          urllib.request.urlretrieve(href, "yandex_originals.zip")
-          print("Downloaded yandex_originals.zip")
+          urllib.request.urlretrieve(info["href"], "yandex_originals.zip")
+          print("Downloaded Yandex originals")
           PY
-          unzip -l yandex_originals.zip | head -200
 
-      - name: Upload originals archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: yandex-originals
-          path: yandex_originals.zip
-          retention-days: 1
+      - name: Prepare high-quality site images
+        shell: bash
+        run: |
+          python -m pip install --quiet pillow
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import re, unicodedata, zipfile
+
+          raw = Path("_yandex_raw")
+          raw.mkdir(exist_ok=True)
+          with zipfile.ZipFile("yandex_originals.zip") as z:
+              z.extractall(raw)
+
+          def decode_name(s):
+              s = re.sub(r"#U([0-9A-Fa-f]{4})", lambda m: chr(int(m.group(1), 16)), s)
+              return unicodedata.normalize("NFC", s)
+
+          files = [(p, decode_name(p.name)) for p in raw.rglob("*.png")]
+
+          def find(prefix, contains=None):
+              matches=[(p,n) for p,n in files if n.startswith(prefix+"_") and (contains is None or contains in n)]
+              if len(matches) != 1:
+                  raise RuntimeError(f"Expected one match for {prefix=} {contains=}, got {[n for _,n in matches]}")
+              return matches[0][0]
+
+          selected = {
+              "stay.webp": find("17"),
+              "memory-form-1.webp": find("16"),
+              "traces-triptych.webp": find("9"),
+              "new-silence-3.webp": find("15"),
+              "we-overcome.webp": find("8"),
+              "space-contact-04.webp": find("19"),
+              "adaptation-diptych.webp": find("4"),
+              "traces-single.webp": find("5"),
+              "new-silence-large.webp": find("13", "Арт-объект"),
+          }
+
+          out = Path("assets/hq")
+          out.mkdir(parents=True, exist_ok=True)
+          for name, src in selected.items():
+              im = Image.open(src).convert("RGB")
+              im.save(out/name, "WEBP", quality=94, method=6)
+              print(name, im.size, (out/name).stat().st_size)
+
+          html_path = Path("index.html")
+          html = html_path.read_text(encoding="utf-8")
+
+          targeted = {
+            'data-cap="Memory of Form · Object 1 · 2026"><img src="assets/o7_2.webp"':
+              'data-cap="Memory of Form · Object 1 · 2026"><img src="assets/hq/memory-form-1.webp"',
+            'data-cap="Traces in the Landscape · 2026"><img src="assets/p6_2.webp"':
+              'data-cap="Traces in the Landscape · 2026"><img src="assets/hq/traces-triptych.webp"',
+            'data-cap="Field of New Silence · Object 3 · 2026"><img src="assets/o7_2.webp"':
+              'data-cap="Field of New Silence · Object 3 · 2026"><img src="assets/hq/new-silence-3.webp"',
+            'data-cap="We Will Overcome · 2026"><img src="assets/p7_2.webp"':
+              'data-cap="We Will Overcome · 2026"><img src="assets/hq/we-overcome.webp"',
+            'data-cap="Space of Contact · 2026"><img src="assets/o2_2.webp"':
+              'data-cap="Space of Contact · 2026"><img src="assets/hq/space-contact-04.webp"',
+            'data-cap="Adaptation · 2026"><img src="assets/p6_2.webp"':
+              'data-cap="Adaptation · 2026"><img src="assets/hq/adaptation-diptych.webp"',
+            'data-cap="Traces in the Landscape · Cut 2 · 2026"><img src="assets/p6_2.webp"':
+              'data-cap="Traces in the Landscape · Cut 2 · 2026"><img src="assets/hq/traces-single.webp"',
+            'data-cap="Stay · 2026"><img src="assets/p13_2.webp"':
+              'data-cap="Stay · 2026"><img src="assets/hq/stay.webp"',
+            'data-cap="Pain into a Space of Support · 2026"><img src="assets/o14_2.webp"':
+              'data-cap="Pain into a Space of Support · 2026"><img src="assets/hq/space-contact-04.webp"',
+            'data-cap="Field of New Silence · 2026"><img src="assets/p7_2.webp"':
+              'data-cap="Field of New Silence · 2026"><img src="assets/hq/new-silence-large.webp"',
+          }
+          for old,new in targeted.items():
+              if old not in html:
+                  raise RuntimeError("Target not found: "+old)
+              html = html.replace(old,new,1)
+
+          html = html.replace('<img src="assets/p13_2.webp" alt="Stay, 2026">','<img src="assets/hq/stay.webp" alt="Stay, 2026">',1)
+          html = html.replace('<img src="assets/o2_2.webp" alt="Space of Contact">','<img src="assets/hq/space-contact-04.webp" alt="Space of Contact">',1)
+
+          # Lazy-load gallery/project images; leave hero eager.
+          first = True
+          parts=[]
+          pos=0
+          for m in re.finditer(r"<img\s+", html):
+              parts.append(html[pos:m.start()])
+              if first:
+                  parts.append("<img ")
+                  first=False
+              else:
+                  parts.append('<img loading="lazy" decoding="async" ')
+              pos=m.end()
+          parts.append(html[pos:])
+          html = "".join(parts)
+
+          html_path.write_text(html, encoding="utf-8")
+          PY
+
+      - name: Commit HQ images
+        shell: bash
+        run: |
+          git config user.name "orlovpaul-create"
+          git config user.email "orlovpaul@gmail.com"
+          git add assets/hq index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Replace site images with HQ Yandex originals"
+          git push
