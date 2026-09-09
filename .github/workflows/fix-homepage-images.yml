@@ -1,0 +1,47 @@
+name: Fix homepage images
+
+on:
+  push:
+    paths:
+      - "_fix_homepage_images.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix hero and Formula images
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          # Formula of Mutual Support: use the correct project image everywhere except hero.
+          s = re.sub(
+              r'src="assets/(?:hq/)?formula-mutual-support(?:-v2)?\.webp(?:\?v=[^"]*)?"',
+              'src="assets/hq/formula-mutual-support-v2.webp?v=20260909-6"',
+              s
+          )
+
+          # Restore the original first-screen image: Yandex file beginning with 17 (Stay / Остаться).
+          s = re.sub(
+              r'<div class="heroimg[^\"]*"><img[^>]*></div>',
+              '<div class="heroimg"><img src="assets/hq/stay.webp?v=20260909-6" alt="Stay, 2026"></div>',
+              s,
+              count=1
+          )
+
+          p.write_text(s, encoding='utf-8')
+          PY
+          git config user.name "orlovpaul-create"
+          git config user.email "orlovpaul@gmail.com"
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Restore hero image 17 and correct Formula project image"
+          git push
