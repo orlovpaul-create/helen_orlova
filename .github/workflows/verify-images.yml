@@ -1,0 +1,29 @@
+name: Verify portfolio images
+
+on:
+  push:
+    paths:
+      - "_trigger_verify.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pip install --quiet pillow
+      - name: Verify images
+        shell: bash
+        run: |
+          python - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          for fn in ["assets/hq/formula-mutual-support-v2.webp","assets/hq/after-movement-v3.webp"]:
+              p=Path(fn)
+              im=Image.open(p)
+              im.verify()
+              im=Image.open(p)
+              print(fn, "bytes=", p.stat().st_size, "dimensions=", im.size, "format=", im.format)
+          PY
