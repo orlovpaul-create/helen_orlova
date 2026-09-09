@@ -1,0 +1,29 @@
+name: Update contact links
+on:
+  push:
+    paths:
+      - '_trigger_contact.txt'
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update contact links
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          old='<div class="contactlinks"><a href="mailto:el.morozova@mail.ru">el.morozova@mail.ru</a><a href="https://t.me/elenaorl15">Telegram · @elenaorl15</a></div>'
+          new='<div class="contactlinks"><a href="https://www.instagram.com/or_lova_elena/" target="_blank" rel="noopener">Instagram · @or_lova_elena</a><a href="https://t.me/elenaorl15" target="_blank" rel="noopener">Telegram · @elenaorl15</a><a href="mailto:el.morozova@mail.ru">el.morozova@mail.ru</a></div>'
+          if old not in s:
+              raise SystemExit('Contact block not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Put Instagram first in contact links"
+          git push
